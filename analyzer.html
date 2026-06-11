@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset=UTF-8>
+
+        <title>Audio Analyzer</title>
+    </head>
+
+    <body>
+        <h1>Узнать частоту звука</h1>
+        <div>
+            <button id="startBtn" type="button">Запуск!</button>
+        </div>
+        <canvas id="scope" width="900" height="200"
+            style="background:#111"></canvas>
+    </body>
+
+    <script>
+        const btn = document.getElementById("startBtn");
+        let audioCtx;
+        let analyzer;
+        const canvas = document.getElementById("scope");
+        const ctx = canvas.getContext("2d");
+
+        btn.addEventListener("click", async () => {
+            console.log("Кнопка работает");
+            
+            //Обращение к микрофону
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true});
+            console.log("micro work", stream);
+            
+            //Создание узлов (источник -> обработчик)
+            audioCtx = new AudioContext();
+            const source = audioCtx.createMediaStreamSource(stream);
+            analyzer = audioCtx.createAnalyser();
+            analyzer.fftSize = 2048; 
+
+            source.connect(analyzer);
+            analyze();
+        });
+        
+        function analyze() {
+            const buffer = new Float32Array(analyzer.fftSize);
+            analyzer.getFloatTimeDomainData(buffer)
+            
+            //ищу сдвиг
+            let logs = new Float32Array(analyzer.fftSize);
+            for (let log = 1; log <= buffer.length / 2; log++) {
+                for (let i = 0; i < buffer.length - log; i++) {
+                    logs[log-1] += buffer[i]*buffer[i+log];
+                }
+            }   
+
+            let start = 0;
+            for (let i = 1; i < logs.length; i++) {
+                if (logs[i] > logs[i-1]) {
+                    start = i;
+                    break;
+                }
+            }   
+
+            let maxLog = -Infinity;
+            let maxLogIndex = -1;
+            for (let i = start; i<logs.length; i++) {
+                if (logs[i] >  maxLog) { 
+                    maxLog = logs[i];
+                    maxLogIndex = i+1;
+                    if (i > start && logs[i] < logs[i-1] && maxLogIndex != -1) {
+                        break
+                    }
+                }
+            }
+            if (maxLogIndex > 1) {
+            
+            //частота по сдвигу
+            let frequency = audioCtx.sampleRate / maxLogIndex;
+            // console.log(frequency);
+
+            //сдаиг в полутонах от ноты Ля
+            let n = Math.round(12 * Math.log2(frequency/440));
+            const noteNames = ['A','A#','B','C','C#','D','D#','E','F','F#','G','G#'];
+            const noteName = noteNames[((n%12) + 12) % 12];
+
+            const cents = Math.round((12 * Math.log2(frequency / 440) - n) * 100);
+
+            console.log(frequency, " | ", noteName, " | ", cents)
+
+            //canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // очистка
+
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height / 2); 
+            ctx.lineTo(canvas.width, canvas.height / 2); 
+            ctx.stroke(); // нарисовать
+
+            
+            ctx.font = "16px monospace";
+            ctx.fillStyle = "#ffffff";
+            ctx.textAlign = "center";
+            ctx.fillText("-50", 20, canvas.height / 2 - 15); 
+            ctx.fillText("0", canvas.width/2, canvas.height / 2 - 15);
+            ctx.fillText("+50", canvas.width-20, canvas.height/2-15);
+            [20, canvas.width / 2, canvas.width - 20].forEach(x => {
+                ctx.beginPath();
+                ctx.moveTo(x, canvas.height / 2 - 5);
+                ctx.lineTo(x, canvas.height / 2 + 5);
+                ctx.stroke();
+            });
+
+            const arrowX = canvas.width / 2 + (cents / 50) * (canvas.width / 2 - 20);
+            ctx.strokeStyle = Math.abs(cents) <= 5 ? "#00ff00" : "#ff4444";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(arrowX, canvas.height / 2 - 30);
+            ctx.lineTo(arrowX, canvas.height / 2 + 30);
+            ctx.stroke();
+
+            ctx.font = "48px monospace";
+            ctx.fillStyle = "#ffffff";
+            ctx.textAlign = "center";
+            ctx.fillText(noteName, canvas.width / 2, 55);
+    
+
+            // canvas x = 
+
+            }
+            else { 
+                console.log("error log")}            
+            requestAnimationFrame(analyze);
+        }
+
+    </script>
+</html>
